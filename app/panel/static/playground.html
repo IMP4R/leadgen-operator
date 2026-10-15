@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Playground — движок диалогов</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { font-family: -apple-system, Arial, sans-serif; margin: 0; background: #0f1115; color: #e8e8e8; }
+header { padding: 10px 16px; background: #171a21; display: flex; gap: 12px; align-items: center; border-bottom: 1px solid #262b36; }
+header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+header a { color: #6ea8ff; font-size: 13px; text-decoration: none; }
+button { background: #2f6fed; color: #fff; border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+button:hover { background: #2559c4; }
+button.ghost { background: #262b36; }
+button.ghost:hover { background: #333a4a; }
+#status { font-size: 12px; color: #889; margin-left: auto; }
+#status.err { color: #ff9d9d; }
+#wrap { display: flex; height: calc(100vh - 49px); }
+#sessions { width: 170px; border-right: 1px solid #262b36; overflow-y: auto; padding: 8px; }
+#sessions .s { padding: 7px 9px; border-radius: 8px; cursor: pointer; font-size: 13px; color: #aab; }
+#sessions .s.active, #sessions .s:hover { background: #262b36; color: #fff; }
+#main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#chat { flex: 1; overflow-y: auto; padding: 16px; }
+.msg { max-width: 74%; margin: 6px 0; padding: 9px 12px; border-radius: 12px; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
+.lead { background: #262b36; margin-right: auto; }
+.operator { background: #2f6fed; margin-left: auto; }
+.who { font-size: 11px; color: #778; margin: 8px 0 -2px; }
+.who.r { text-align: right; }
+.qual { font-size: 12px; padding: 5px 10px; border-radius: 8px; margin: 10px 0; display: inline-block; }
+.qual.target { background: #1c4331; color: #7fe0b0; }
+.qual.not_target { background: #4a2323; color: #ff9d9d; }
+.qual.unclear { background: #454017; color: #ffe08a; }
+#variants { display: flex; flex-direction: column; gap: 6px; padding: 0 16px; }
+#variants:not(:empty) { padding: 10px 16px; border-top: 1px solid #262b36; }
+#variants .hint { font-size: 11px; color: #778; }
+#variants .v { background: #1c202a; border: 1px solid #333a4a; border-radius: 10px; padding: 9px 12px; cursor: pointer; font-size: 13px; }
+#variants .v:hover { border-color: #2f6fed; background: #1f2634; }
+#variants .v b { color: #6ea8ff; margin-right: 8px; }
+#composers { border-top: 1px solid #262b36; padding: 10px 16px; display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row input { flex: 1; background: #171a21; border: 1px solid #333a4a; color: #e8e8e8; border-radius: 8px; padding: 9px 12px; font-size: 14px; }
+.row.lead input:focus { border-color: #6b7280; outline: none; }
+.row.op input:focus { border-color: #2f6fed; outline: none; }
+.tag { font-size: 11px; width: 62px; text-align: center; padding: 4px 0; border-radius: 6px; }
+.row.lead .tag { background: #262b36; color: #aab; }
+.row.op .tag { background: #233a5e; color: #8ab8ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧪 Playground — движок диалогов</h1>
+  <button onclick="newSession()">Новый диалог</button>
+  <a href="/leads">👥 Лиды</a>
+  <span id="status"></span>
+</header>
+<div id="wrap">
+  <div id="sessions"></div>
+  <div id="main">
+    <div id="chat"></div>
+    <div id="variants"></div>
+    <div id="composers">
+      <div class="row lead">
+        <span class="tag">Лид</span>
+        <input id="leadInput" placeholder="Сообщение от имени лида… (Enter)">
+        <button onclick="sendLead()">Отправить</button>
+      </div>
+      <div class="row op">
+        <span class="tag">Оператор</span>
+        <input id="opInput" placeholder="Ответ оператора или кратко суть — и жми ✨ (Enter = отправить как есть)">
+        <button class="ghost" title="Развернуть в 3 варианта" onclick="draftVariants()">✨</button>
+        <button class="ghost" title="Ещё варианты на последнее сообщение лида" onclick="regen()">⤴</button>
+        <button onclick="sendOperator()">Отправить</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+let sid = null, fingerprint = "";
+
+async function api(path, method, body) {
+  const opts = { method: method || 'GET' };
+  if (body) { opts.headers = {'Content-Type': 'application/json'}; opts.body = JSON.stringify(body); }
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+function setStatus(text, isErr) {
+  const st = document.getElementById('status');
+  st.className = isErr ? 'err' : '';
+  st.textContent = text || '';
+}
+async function loadSessions() {
+  try {
+    const d = await api('/api/pg/sessions');
+    const box = document.getElementById('sessions');
+    box.innerHTML = '';
+    d.sessions.forEach(s => {
+      const el = document.createElement('div');
+      el.className = 's' + (s.id === sid ? ' active' : '');
+      el.textContent = '#' + s.id + ' (' + s.n + ')';
+      el.onclick = () => selectSession(s.id);
+      box.appendChild(el);
+    });
+  } catch (e) { /* server down */ }
+}
+async function selectSession(id) {
+  sid = id;
+  fingerprint = "";
+  await renderChat();
+  loadSessions();
+}
+async function newSession() {
+  const d = await api('/api/pg/sessions', 'POST');
+  await selectSession(d.id);
+  await loadSessions();
+}
+</script>
+<script>
+async function renderChat() {
+  if (!sid) return;
+  let d;
+  try { d = await api('/api/pg/' + sid + '/messages'); } catch (e) { return; }
+  const fp = JSON.stringify(d.messages.map(m => [m.id, m.text, m.variants ? m.variants.length : 0]));
+  if (fp === fingerprint) return;
+  fingerprint = fp;
+  const chat = document.getElementById('chat'), vs = document.getElementById('variants');
+  chat.innerHTML = ''; vs.innerHTML = '';
+  let lastQual = null, pending = null;
+  d.messages.forEach(m => {
+    if (m.qualification) lastQual = m.qualification;
+    if (m.variants && m.variants.length) { pending = m.variants; return; }
+    const who = document.createElement('div');
+    who.className = 'who' + (m.role === 'operator' ? ' r' : '');
+    who.textContent = m.role === 'lead' ? 'Лид' : 'Оператор';
+    chat.appendChild(who);
+    const el = document.createElement('div');
+    el.className = 'msg ' + m.role;
+    el.textContent = m.text;
+    chat.appendChild(el);
+  });
+  if (lastQual) {
+    const q = document.createElement('div');
+    q.className = 'qual ' + (lastQual.status || '');
+    q.textContent = (lastQual.status || '') + ' → ' + (lastQual.next_step || '') + ' · ' + (lastQual.reason || '');
+    chat.appendChild(q);
+  }
+  if (pending) renderVariants(pending);
+  chat.scrollTop = chat.scrollHeight;
+}
+function renderVariants(variants) {
+  const vs = document.getElementById('variants');
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = 'Варианты ответа — кликни, чтобы отправить:';
+  vs.appendChild(hint);
+  variants.forEach((v, i) => {
+    const el = document.createElement('div');
+    el.className = 'v';
+    el.innerHTML = '<b>В' + (i + 1) + '</b>' + esc(v);
+    el.onclick = () => pick(i);
+    vs.appendChild(el);
+  });
+}
+</script>
+<script>
+async function sendLead() {
+  const inp = document.getElementById('leadInput');
+  const text = inp.value.trim();
+  if (!text) return;
+  if (!sid) await newSession();
+  inp.value = '';
+  setStatus('Движок думает…');
+  try {
+    await api('/api/pg/' + sid + '/lead', 'POST', { text: text });
+    setStatus('');
+  } catch (e) { setStatus('Ошибка движка: ' + e.message, true); }
+  await renderChat();
+  await loadSessions();
+}
+async function sendOperator() {
+  const inp = document.getElementById('opInput');
+  const text = inp.value.trim();
+  if (!text) return;
+  if (!sid) await newSession();
+  inp.value = '';
+  try {
+    await api('/api/pg/' + sid + '/operator', 'POST', { text: text });
+    setStatus('');
+  } catch (e) { setStatus('Не отправилось: ' + e.message, true); }
+  await renderChat();
+  await loadSessions();
+}
+async function pick(i) {
+  if (!sid) return;
+  try {
+    await api('/api/pg/' + sid + '/pick', 'POST', { index: i });
+    setStatus('');
+  } catch (e) { setStatus('Не выбралось: ' + e.message, true); }
+  await renderChat();
+}
+async function regen() {
+  if (!sid) return;
+  setStatus('Генерирую заново…');
+  try {
+    await api('/api/pg/' + sid + '/regen', 'POST');
+    setStatus('');
+  } catch (e) { setStatus('Ошибка: ' + e.message, true); }
+  await renderChat();
+}
+async function draftVariants() {
+  const inp = document.getElementById('opInput');
+  const text = inp.value.trim();
+  if (!text) { setStatus('Напиши кратко суть ответа — и жми ✨', true); return; }
+  if (!sid) await newSession();
+  inp.value = '';
+  setStatus('Движок разворачивает в варианты…');
+  try {
+    await api('/api/pg/' + sid + '/draft', 'POST', { text: text });
+    setStatus('');
+  } catch (e) { setStatus('Ошибка движка: ' + e.message, true); }
+  await renderChat();
+}
+document.getElementById('leadInput').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.preventDefault(); sendLead(); }
+});
+document.getElementById('opInput').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.preventDefault(); sendOperator(); }
+});
+(async function init() {
+  await loadSessions();
+  try {
+    const d = await api('/api/pg/sessions');
+    if (d.sessions && d.sessions.length) await selectSession(d.sessions[0].id);
+    else await newSession();
+  } catch (e) { setStatus('Сервер недоступен', true); }
+})();
+setInterval(function () { if (sid) renderChat(); }, 2500);
+</script>
+</body>
+</html>

@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Лиды — панель оператора</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; margin: 0; background: #0f1115; color: #e8e8e8; }
+header { min-height: 49px; padding: 10px 16px; background: #171a21; display: flex; gap: 12px; align-items: center; border-bottom: 1px solid #262b36; }
+header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+header a { color: #6ea8ff; font-size: 13px; text-decoration: none; }
+button { background: #2f6fed; color: #fff; border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+button:hover { background: #2559c4; }
+button:disabled { opacity: .55; cursor: wait; }
+button.ghost { background: #262b36; }
+button.ghost:hover { background: #333a4a; }
+#globalMode { margin-left: auto; display: flex; gap: 7px; align-items: center; font-size: 12px; color: #aab; }
+#modeToggle { min-width: 105px; font-weight: 600; }
+#modeToggle.auto { background: #1c4331; color: #7fe0b0; }
+#modeToggle.manual { background: #454017; color: #ffe08a; }
+#notice { font-size: 12px; color: #889; }
+#notice.err { color: #ff9d9d; }
+#stats { min-height: 33px; display: flex; gap: 14px; font-size: 12px; color: #aab; padding: 8px 16px; border-bottom: 1px solid #262b36; flex-wrap: wrap; }
+#stats b { color: #fff; }
+#wrap { display: flex; height: calc(100vh - 82px); min-height: 420px; }
+#leads { width: 285px; flex: 0 0 285px; border-right: 1px solid #262b36; overflow-y: auto; padding: 8px; }
+#sourceTabs { display: flex; gap: 4px; margin-bottom: 8px; }
+#sourceTabs .tab { background: #262b36; color: #aab; font-size: 11px; padding: 5px 10px; }
+#sourceTabs .tab.active { background: #2f6fed; color: #fff; }
+#addLead { display: flex; gap: 6px; margin-bottom: 8px; }
+#addLead input { min-width: 0; flex: 1; }
+input, select { background: #171a21; border: 1px solid #333a4a; color: #e8e8e8; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+#addLead select { width: 56px; padding: 7px 4px; }
+.lead-item { padding: 8px 9px; border-radius: 8px; cursor: pointer; font-size: 13px; margin-bottom: 2px; }
+.lead-item:hover, .lead-item.active { background: #262b36; }
+.lead-state { font-size: 12px; color: #9aa3b2; margin: 6px 0; }
+.lead-state.closed { color: #e0a35c; }
+.lead-sub { color: #778; font-size: 11px; margin-top: 3px; }
+.badge { font-size: 10px; padding: 2px 6px; border-radius: 6px; margin-left: 5px; }
+.b-new { background: #333a4a; }
+.b-in_work { background: #1c4331; color: #7fe0b0; }
+.b-paused { background: #454017; color: #ffe08a; }
+.b-dropped { background: #4a2323; color: #ff9d9d; }
+.b-call_booked { background: #233a5e; color: #8ab8ff; }
+.b-tg { background: #233a5e; color: #8ab8ff; }
+.b-yr { background: #2a4a2a; color: #7fe0b0; }
+#main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#side { min-height: 48px; padding: 8px 16px; border-bottom: 1px solid #262b36; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+#side:empty { display: none; }
+#side select, #side input { padding: 6px 9px; font-size: 12px; }
+#chat { flex: 1; overflow-y: auto; padding: 16px; }
+.empty { color: #778; height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 13px; }
+.who { font-size: 11px; color: #778; margin: 8px 0 -2px; }
+.who.r { text-align: right; }
+.msg { max-width: 74%; margin: 6px 0; padding: 9px 12px; border-radius: 12px; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.in { background: #262b36; margin-right: auto; }
+.msg.out { background: #2f6fed; margin-left: auto; }
+.qual { font-size: 12px; padding: 5px 10px; border-radius: 8px; margin: 10px 0; display: inline-block; }
+.qual.target { background: #1c4331; color: #7fe0b0; }
+.qual.not_target { background: #4a2323; color: #ff9d9d; }
+.qual.unclear { background: #454017; color: #ffe08a; }
+#variants { display: flex; flex-direction: column; gap: 6px; padding: 0 16px; max-height: 42vh; overflow-y: auto; }
+#variants:not(:empty) { padding: 10px 16px; border-top: 1px solid #262b36; }
+#variants .hint { font-size: 11px; color: #778; }
+#variants .v { background: #1c202a; border: 1px solid #333a4a; border-radius: 10px; padding: 9px 12px; cursor: pointer; font-size: 13px; white-space: pre-wrap; }
+#variants .v:hover { border-color: #2f6fed; background: #1f2634; }
+#variants .v b { color: #6ea8ff; margin-right: 8px; }
+#composer { border-top: 1px solid #262b36; padding: 10px 16px; display: flex; gap: 8px; align-items: center; }
+#composer .tag { flex: 0 0 68px; font-size: 11px; text-align: center; padding: 4px 0; border-radius: 6px; background: #233a5e; color: #8ab8ff; }
+#messageInput { flex: 1; min-width: 0; padding: 9px 12px; font-size: 14px; }
+@media (max-width: 760px) {
+  #leads { width: 220px; flex-basis: 220px; }
+  #composer { flex-wrap: wrap; }
+  #composer .tag { display: none; }
+  #messageInput { flex-basis: calc(100% - 110px); }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>👥 Лиды</h1>
+  <a href="/">🧪 Плейграунд</a>
+  <div id="globalMode"><span>Общий режим:</span><button id="modeToggle" onclick="toggleGlobalMode()">Загрузка…</button></div>
+  <span id="notice"></span>
+</header>
+<div id="stats"></div>
+<div id="wrap">
+  <aside id="leads">
+    <div id="sourceTabs">
+      <button class="tab active" data-source="" onclick="switchSource('')">Все</button>
+      <button class="tab" data-source="tg" onclick="switchSource('tg')">Telegram</button>
+      <button class="tab" data-source="yr" onclick="switchSource('yr')">YetReply</button>
+    </div>
+    <div id="addLead">
+      <select id="newLeadSource"><option value="tg">TG</option><option value="yr">YR</option></select>
+      <input id="newLeadInput" placeholder="@user или id">
+      <button onclick="addLead()">+ В работу</button>
+    </div>
+    <div id="leadList"></div>
+  </aside>
+  <main id="main">
+    <div id="side"></div>
+    <div id="chat"><div class="empty">Выберите диалог</div></div>
+    <div id="variants"></div>
+    <div id="composer">
+      <span class="tag">Оператор</span>
+      <input id="messageInput" placeholder="Сообщение или краткая суть ответа… (Enter — отправить как есть)">
+      <button class="ghost" title="Сделать 3 близких варианта без изменения смысла" onclick="draftVariants()">✨</button>
+      <button class="ghost" title="Если поле заполнено — обновить близкие варианты; если пусто — ответить на последнее сообщение лида" onclick="regenerate()">⤴</button>
+      <button onclick="sendManual()">Отправить</button>
+    </div>
+  </main>
+</div>
+<script>
+let leadId = null;
+let currentSource = '';
+let fingerprint = '';
+let busy = false;
+let globalMode = 'auto';
+const firstOptionsRequested = new Set();
+
+async function api(path, method, body) {
+  const opts = { method: method || 'GET' };
+  if (body !== undefined) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(body);
+  }
+  const response = await fetch(path, opts);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+  return data;
+}
+
+function esc(value) {
+  const el = document.createElement('div');
+  el.textContent = value == null ? '' : String(value);
+  return el.innerHTML;
+}
+
+function setNotice(text, isError) {
+  const el = document.getElementById('notice');
+  el.className = isError ? 'err' : '';
+  el.textContent = text || '';
+}
+
+function renderGlobalMode() {
+  const button = document.getElementById('modeToggle');
+  button.className = globalMode === 'auto' ? 'auto' : 'manual';
+  button.textContent = globalMode === 'auto' ? '🤖 Авто' : '✋ Ручной';
+  button.title = globalMode === 'auto'
+    ? 'Ответы отправляются автоматически во всех диалогах'
+    : 'Варианты создаются, но отправляются только вручную';
+}
+
+async function loadGlobalMode() {
+  const data = await api('/api/settings/mode');
+  globalMode = data.mode;
+  renderGlobalMode();
+}
+
+async function toggleGlobalMode() {
+  const nextMode = globalMode === 'auto' ? 'manual' : 'auto';
+  const button = document.getElementById('modeToggle');
+  button.disabled = true;
+  try {
+    const data = await api('/api/settings/mode', 'POST', { mode: nextMode });
+    globalMode = data.mode;
+    renderGlobalMode();
+    setNotice(globalMode === 'auto'
+      ? 'Включён общий автоматический режим'
+      : 'Включён общий ручной режим');
+  } catch (error) {
+    setNotice('Не удалось сменить режим: ' + error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function activateSourceTab(source) {
+  currentSource = source;
+  document.querySelectorAll('#sourceTabs .tab').forEach(el => {
+    el.classList.toggle('active', el.dataset.source === source);
+  });
+}
+
+async function switchSource(source) {
+  activateSourceTab(source);
+  await loadLeads();
+}
+
+async function loadLeads() {
+  try {
+    const path = currentSource ? '/api/leads?source=' + encodeURIComponent(currentSource) : '/api/leads';
+    const data = await api(path);
+    const list = document.getElementById('leadList');
+    list.innerHTML = '';
+    data.leads.forEach(lead => {
+      const item = document.createElement('div');
+      item.className = 'lead-item' + (lead.id === leadId ? ' active' : '');
+      const sourceBadge = lead.source === 'yr'
+        ? '<span class="badge b-yr">YR</span>'
+        : '<span class="badge b-tg">TG</span>';
+      const closedBadge = Number(lead.dialog_closed || 0)
+        ? '<span class="badge b-paused" title="Диалог закрыт, автоответы выключены">⏸</span>'
+        : '';
+      item.innerHTML = esc(lead.name || lead.username || lead.tg_user_id) + sourceBadge +
+        '<span class="badge b-' + esc(lead.status) + '">' + esc(lead.status) + '</span>' + closedBadge +
+        (lead.username ? '<div class="lead-sub">@' + esc(lead.username) + '</div>' : '');
+      item.onclick = () => selectLead(lead.id);
+      list.appendChild(item);
+    });
+  } catch (error) {
+    setNotice('Не удалось загрузить лиды: ' + error.message, true);
+  }
+}
+
+async function selectLead(id) {
+  leadId = id;
+  fingerprint = '';
+  document.getElementById('messageInput').value = '';
+  setNotice('');
+  await renderChat(true, true);
+  await loadLeads();
+}
+
+function renderSide(lead) {
+  const side = document.getElementById('side');
+  if (!lead) { side.innerHTML = ''; return; }
+  const statuses = ['new', 'in_work', 'paused', 'dropped', 'call_booked'];
+  const closed = Number(lead.dialog_closed || 0);
+  const refusals = Number(lead.refusals || 0);
+  const stateLine = closed
+    ? '<div class="lead-state closed">⏸ Диалог закрыт'
+      + (lead.closed_reason ? ': ' + esc(lead.closed_reason) : '')
+      + '<br><button class="ghost" onclick="resumeDialog()">Возобновить автоответы</button></div>'
+    : (refusals ? '<div class="lead-state">Отказов: ' + refusals + ' из 2</div>' : '');
+  side.innerHTML =
+    '<b>' + esc(lead.name || lead.username || lead.tg_user_id) + '</b>' +
+    '<span class="badge ' + (lead.source === 'yr' ? 'b-yr' : 'b-tg') + '">' + (lead.source === 'yr' ? 'YR' : 'TG') + '</span>' +
+    'Статус: <select onchange="changeStatus(this.value)">' +
+      statuses.map(value => '<option value="' + value + '"' + (value === lead.status ? ' selected' : '') + '>' + value + '</option>').join('') +
+    '</select>' +
+    stateLine +
+    '<input id="dropInput" value="' + esc(lead.drop_reason || '') + '" placeholder="Причина отвала">' +
+    '<button class="ghost" onclick="changeStatus(\'dropped\')">Отвал</button>';
+}
+
+async function renderChat(allowFirstOptions, force) {
+  if (!leadId) return;
+  let data;
+  try {
+    data = await api('/api/leads/' + leadId + '/messages');
+  } catch (error) {
+    setNotice('Не удалось открыть диалог: ' + error.message, true);
+    return;
+  }
+
+  const nextFingerprint = JSON.stringify({
+    lead: data.lead ? [data.lead.id, data.lead.status, data.lead.mode, data.lead.drop_reason] : null,
+    messages: data.messages.map(message => [message.id, message.direction, message.text, message.variants, message.qualification])
+  });
+  if (!force && nextFingerprint === fingerprint) return;
+  fingerprint = nextFingerprint;
+
+  renderSide(data.lead);
+  const chat = document.getElementById('chat');
+  const variantsBox = document.getElementById('variants');
+  chat.innerHTML = '';
+  variantsBox.innerHTML = '';
+
+  let pendingVariants = null;
+  let lastQualification = null;
+  let realMessageCount = 0;
+
+  data.messages.forEach(message => {
+    if (message.qualification) lastQualification = message.qualification;
+    if (message.direction === 'draft') {
+      if (message.variants && message.variants.length) pendingVariants = message.variants;
+      return;
+    }
+    if (message.direction !== 'in' && message.direction !== 'out') return;
+    realMessageCount += 1;
+
+    const who = document.createElement('div');
+    who.className = 'who' + (message.direction === 'out' ? ' r' : '');
+    who.textContent = message.direction === 'in' ? 'Лид' : 'Оператор';
+    chat.appendChild(who);
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg ' + message.direction;
+    bubble.textContent = message.text;
+    chat.appendChild(bubble);
+  });
+
+  if (lastQualification && Object.keys(lastQualification).length) {
+    const qualification = document.createElement('div');
+    qualification.className = 'qual ' + (lastQualification.status || '');
+    qualification.textContent = (lastQualification.status || '') + ' → ' +
+      (lastQualification.next_step || '') + ' · ' + (lastQualification.reason || '');
+    chat.appendChild(qualification);
+  }
+
+  if (!realMessageCount) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'Новый чат: выберите первый вариант ниже или напишите своё сообщение.';
+    chat.appendChild(empty);
+  }
+
+  if (pendingVariants) renderVariants(pendingVariants);
+  chat.scrollTop = chat.scrollHeight;
+
+  if (allowFirstOptions && realMessageCount === 0 && !pendingVariants && !firstOptionsRequested.has(leadId)) {
+    firstOptionsRequested.add(leadId);
+    await generateSuggestions(true);
+  }
+}
+
+function renderVariants(variants) {
+  const box = document.getElementById('variants');
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = 'Варианты сообщения — кликните, чтобы отправить:';
+  box.appendChild(hint);
+  variants.forEach((variant, index) => {
+    const item = document.createElement('div');
+    item.className = 'v';
+    item.innerHTML = '<b>В' + (index + 1) + '</b>' + esc(variant);
+    item.onclick = () => pickVariant(index);
+    box.appendChild(item);
+  });
+}
+
+async function runBusy(label, action) {
+  if (busy) return;
+  busy = true;
+  document.querySelectorAll('#composer button').forEach(button => button.disabled = true);
+  setNotice(label || '');
+  try {
+    await action();
+    setNotice('');
+  } catch (error) {
+    setNotice(error.message, true);
+  } finally {
+    busy = false;
+    document.querySelectorAll('#composer button').forEach(button => button.disabled = false);
+  }
+}
+
+async function generateSuggestions(silent) {
+  if (!leadId) return;
+  await runBusy(silent ? 'Готовлю первые варианты…' : 'Генерирую варианты…', async () => {
+    await api('/api/leads/' + leadId + '/suggest', 'POST');
+    fingerprint = '';
+    await renderChat(false, true);
+  });
+}
+
+async function draftVariants() {
+  if (!leadId) { setNotice('Сначала выберите диалог', true); return; }
+  const input = document.getElementById('messageInput');
+  const text = input.value.trim();
+  if (!text) {
+    await generateSuggestions(false);
+    return;
+  }
+  await runBusy('Делаю близкие варианты без изменения смысла…', async () => {
+    await api('/api/leads/' + leadId + '/draft', 'POST', { text });
+    input.value = '';
+    fingerprint = '';
+    await renderChat(false, true);
+  });
+}
+
+async function regenerate() {
+  if (!leadId) { setNotice('Сначала выберите диалог', true); return; }
+  const input = document.getElementById('messageInput');
+  if (input.value.trim()) {
+    await draftVariants();
+    return;
+  }
+  await generateSuggestions(false);
+}
+
+async function pickVariant(index) {
+  if (!leadId) return;
+  await runBusy('Отправляю…', async () => {
+    await api('/api/leads/' + leadId + '/send', 'POST', { index });
+    document.getElementById('messageInput').value = '';
+    fingerprint = '';
+    await renderChat(false, true);
+    await loadStats();
+  });
+}
+
+async function sendManual() {
+  if (!leadId) { setNotice('Сначала выберите диалог', true); return; }
+  const input = document.getElementById('messageInput');
+  const text = input.value.trim();
+  if (!text) return;
+  await runBusy('Отправляю…', async () => {
+    await api('/api/leads/' + leadId + '/send', 'POST', { custom: text });
+    input.value = '';
+    fingerprint = '';
+    await renderChat(false, true);
+    await loadStats();
+  });
+}
+
+async function addLead() {
+  const input = document.getElementById('newLeadInput');
+  const source = document.getElementById('newLeadSource').value;
+  const identifier = input.value.trim();
+  if (!identifier) return;
+  try {
+    const result = await api('/api/leads/add', 'POST', { identifier, source });
+    input.value = '';
+    activateSourceTab(source);
+    await loadLeads();
+    await selectLead(result.id);
+  } catch (error) {
+    setNotice('Не удалось добавить: ' + error.message, true);
+  }
+}
+
+async function resumeDialog() {
+  if (!leadId) { setNotice('Сначала выберите диалог', true); return; }
+  await runBusy('Возобновляю диалог…', async () => {
+    await api('/api/leads/' + leadId + '/resume', 'POST', {});
+    await renderChat(false, true);
+    await loadLeads();
+    setNotice('Автоответы снова включены для этого диалога');
+  });
+}
+
+async function changeStatus(status) {
+  if (!leadId) return;
+  const dropInput = document.getElementById('dropInput');
+  await api('/api/leads/' + leadId + '/status', 'POST', {
+    status,
+    drop_reason: dropInput ? dropInput.value : ''
+  });
+  fingerprint = '';
+  await Promise.all([renderChat(false, true), loadLeads(), loadStats()]);
+}
+
+async function loadStats() {
+  try {
+    const data = await api('/api/stats');
+    const statusBits = Object.keys(data.by_status || {}).map(key =>
+      esc(key) + ': <b>' + data.by_status[key] + '</b>').join(' ');
+    document.getElementById('stats').innerHTML =
+      'Всего: <b>' + data.total + '</b> ' +
+      'TG: <b>' + ((data.by_source && data.by_source.tg) || 0) + '</b> ' +
+      'YR: <b>' + ((data.by_source && data.by_source.yr) || 0) + '</b> ' +
+      statusBits + ' · Вх: <b>' + data.today_in + '</b> · Исх: <b>' + data.today_out + '</b>';
+  } catch (_) { /* сервер временно недоступен */ }
+}
+
+document.getElementById('messageInput').addEventListener('keydown', event => {
+  if (event.key === 'Enter') { event.preventDefault(); sendManual(); }
+});
+document.getElementById('newLeadInput').addEventListener('keydown', event => {
+  if (event.key === 'Enter') { event.preventDefault(); addLead(); }
+});
+
+(async function init() {
+  await Promise.all([loadLeads(), loadStats(), loadGlobalMode()]);
+})();
+setInterval(() => { if (leadId && !busy) renderChat(false, false); loadLeads(); }, 3000);
+setInterval(() => { loadStats(); loadGlobalMode(); }, 8000);
+</script>
+</body>
+</html>
